@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>VCF Splitter - X Separator Fix</title>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; padding: 20px; }
+    .container { background-color: #ffffff; border-radius: 12px; box-shadow: 0 8px 20px rgba(0,0,0,0.1); padding: 30px; width: 100%; max-width: 700px; }
+    h1 { text-align: center; color: #1a73e8; font-size: 1.5em; border-bottom: 2px solid #1a73e8; padding-bottom: 10px; }
+    label { font-size: 14px; font-weight: bold; display: block; margin-top: 15px; }
+    textarea, input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+    .btn { background-color: #1a73e8; color: white; border: none; padding: 16px; width: 100%; font-size: 16px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 20px; }
+    .flex { display: flex; gap: 15px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>VCF Batch - X Separator</h1>
+    <form id="vcfForm">
+      <label>Data Mentah (Gunakan huruf X untuk pisah file):</label>
+      <textarea id="raw_text" rows="10" placeholder="admin... navy... X admin... navy..." required></textarea>
+
+      <div class="flex">
+        <div style="flex: 2;">
+          <label>Nama Utama:</label>
+          <input type="text" id="file_name" placeholder="VVIP" required>
+        </div>
+        <div style="flex: 1;">
+          <label>Mulai Set:</label>
+          <input type="number" id="start_num" value="1" required>
+        </div>
+        <div style="flex: 1;">
+          <label>Rentang (Opsional):</label>
+          <input type="number" id="range_step" placeholder="Contoh: 10">
+        </div>
+      </div>
+
+      <label>Nomor Admin Tambahan:</label>
+      <textarea id="ex_admin" rows="2" placeholder="Satu nomor per baris..."></textarea>
+
+      <label>Nomor Navy Tambahan:</label>
+      <textarea id="ex_navy" rows="2" placeholder="Satu nomor per baris..."></textarea>
+
+      <button type="submit" class="btn">GENERATE & DOWNLOAD VCF</button>
+    </form>
+  </div>
+
+  <script>
+    const ADMIN_KEYWORDS = ["admin", "admins", "管理", "admn"];
+    const NAVY_KEYWORDS = ["client", "clients", "navy", "海军", "水军"];
+
+    function isPhone(l) { const d = l.replace(/[^0-9]/g, ''); return d.length >= 7 && d.length <= 18; }
+    function formatP(n) { const c = n.replace(/[^0-9]/g, ''); return c.length > 0 ? '+' + c : ''; }
+    function pad(n) { return n < 10 ? '0' + n : n; }
+
+    document.getElementById('vcfForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+
+      const raw = document.getElementById('raw_text').value.trim();
+      const base = document.getElementById('file_name').value.trim();
+      const start = parseInt(document.getElementById('start_num').value);
+      const stepValue = document.getElementById('range_step').value;
+      const step = stepValue ? parseInt(stepValue) : null;
+      
+      const extraA = document.getElementById('ex_admin').value.split('\n').map(l => l.trim()).filter(l => isPhone(l));
+      const extraN = document.getElementById('ex_navy').value.split('\n').map(l => l.trim()).filter(l => isPhone(l));
+
+      // PEMISAH FILE: Sekarang menggunakan huruf X (Case Insensitive)
+      const sections = raw.split(/\n\s*[xX]\s*\n/).filter(s => s.trim().length > 5);
+
+      for (let i = 0; i < sections.length; i++) {
+        const lines = sections[i].split('\n').map(l => l.trim());
+        let sNum = start + i;
+        let currentAdminList = [...extraA];
+        let currentNavyList = [...extraN];
+        let role = "";
+
+        lines.forEach(line => {
+          if (line.toLowerCase().includes('xeon')) return;
+          const low = line.toLowerCase();
+          if (ADMIN_KEYWORDS.some(k => low.includes(k))) role = "ADMIN";
+          else if (NAVY_KEYWORDS.some(k => low.includes(k))) role = "NAVY";
+          else if (isPhone(line) && role !== "") {
+            if (role === "ADMIN") currentAdminList.push(line);
+            else if (role === "NAVY") currentNavyList.push(line);
+          }
+        });
+
+        if (currentAdminList.length === extraA.length && currentNavyList.length === extraN.length) continue;
+
+        let labelRange;
+        if (step && step > 0) {
+            const startRange = start + (i * step);
+            const endRange = startRange + step - 1;
+            labelRange = `${startRange}-${endRange}`;
+        } else {
+            labelRange = sNum;
+        }
+
+        let vcfBody = "";
+        let aC = 1, nC = 1;
+
+        // Nama Kontak tetap pakai spasi sesuai permintaan
+        const makeV = (r, n, idx, label) => `BEGIN:VCARD\nVERSION:3.0\nFN:${r}-${base} ${label} ${pad(idx)}\nTEL:${formatP(n)}\nEND:VCARD\n`;
+
+        currentAdminList.forEach(n => vcfBody += makeV("ADMIN", n, aC++, labelRange));
+        currentNavyList.forEach(n => vcfBody += makeV("NAVY", n, nC++, labelRange));
+
+        const blob = new Blob([vcfBody], { type: 'text/vcard' });
+        const link = document.createElement('a');
+        
+        const fileName = `ADMIN NAVY ${base} ${labelRange}.vcf`;
+
+        await new Promise(resolve => setTimeout(() => {
+          link.href = URL.createObjectURL(blob);
+          link.download = fileName;
+          link.click();
+          resolve();
+        }, 1200)); 
+      }
+      alert("Selesai! File terpisah berdasarkan huruf X.");
+    });
+  </script>
+</body>
+</html>
