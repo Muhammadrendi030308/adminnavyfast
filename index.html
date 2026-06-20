@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <title>VCF Splitter - X Separator Fix</title>
+  <title>VCF Splitter - Auto Clean PRO</title>
   <style>
     body { font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; padding: 20px; }
     .container { background-color: #ffffff; border-radius: 12px; box-shadow: 0 8px 20px rgba(0,0,0,0.1); padding: 30px; width: 100%; max-width: 700px; }
@@ -15,10 +15,10 @@
 </head>
 <body>
   <div class="container">
-    <h1>VCF Batch - X Separator</h1>
+    <h1>VCF Batch - Auto Clean</h1>
     <form id="vcfForm">
       <label>Data Mentah (Gunakan huruf X untuk pisah file):</label>
-      <textarea id="raw_text" rows="10" placeholder="admin... navy... X admin... navy..." required></textarea>
+      <textarea id="raw_text" rows="10" placeholder="Masukkan data mentah..." required></textarea>
 
       <div class="flex">
         <div style="flex: 2;">
@@ -65,28 +65,49 @@
       const extraA = document.getElementById('ex_admin').value.split('\n').map(l => l.trim()).filter(l => isPhone(l));
       const extraN = document.getElementById('ex_navy').value.split('\n').map(l => l.trim()).filter(l => isPhone(l));
 
-      // PEMISAH FILE: Sekarang menggunakan huruf X (Case Insensitive)
-      const sections = raw.split(/\n\s*[xX]\s*\n/).filter(s => s.trim().length > 5);
+      // PEMISAH FILE: Memecah berdasarkan huruf X di baris baru
+      const sections = raw.split(/\n\s*[xX]\s*\n/).filter(s => s.trim().length > 2);
 
       for (let i = 0; i < sections.length; i++) {
         const lines = sections[i].split('\n').map(l => l.trim());
-        let sNum = start + i;
-        let currentAdminList = [...extraA];
-        let currentNavyList = [...extraN];
+        
+        let rawAdminList = [];
+        let rawNavyList = [];
         let role = "";
 
         lines.forEach(line => {
           if (line.toLowerCase().includes('xeon')) return;
           const low = line.toLowerCase();
-          if (ADMIN_KEYWORDS.some(k => low.includes(k))) role = "ADMIN";
-          else if (NAVY_KEYWORDS.some(k => low.includes(k))) role = "NAVY";
-          else if (isPhone(line) && role !== "") {
-            if (role === "ADMIN") currentAdminList.push(line);
-            else if (role === "NAVY") currentNavyList.push(line);
+          
+          // Cek penanda role di awal set
+          if (ADMIN_KEYWORDS.some(k => low.includes(k))) {
+            role = "ADMIN";
+          } else if (NAVY_KEYWORDS.some(k => low.includes(k))) {
+            role = "NAVY";
+          } else {
+            // Jika bukan kata kunci role, dan baris ini valid berisi nomor telepon
+            if (isPhone(line) && role !== "") {
+              if (role === "ADMIN") rawAdminList.push(line);
+              else if (role === "NAVY") rawNavyList.push(line);
+            }
+            // Jika baris berisi teks pengganggu (seperti 'ANAKK'), otomatis dilewati karena tidak lolos isPhone()
           }
         });
 
-        if (currentAdminList.length === extraA.length && currentNavyList.length === extraN.length) continue;
+        // Skip jika section ini kosong total tidak ada nomornya
+        if (rawAdminList.length === 0 && rawNavyList.length === 0) continue;
+
+        // Gabungkan nomor tambahan secara cerdas hanya jika kategori tersebut ada di data mentah
+        let currentAdminList = rawAdminList.length > 0 ? [...extraA, ...rawAdminList] : [];
+        let currentNavyList = rawNavyList.length > 0 ? [...extraN, ...rawNavyList] : [];
+
+        // PENENTUAN JUDUL FILE: Mengikuti isi data mentah yang ada
+        let fileTypePrefix = "ADMIN NAVY";
+        if (rawAdminList.length > 0 && rawNavyList.length === 0) {
+          fileTypePrefix = "ADMIN";
+        } else if (rawAdminList.length === 0 && rawNavyList.length > 0) {
+          fileTypePrefix = "NAVY";
+        }
 
         let labelRange;
         if (step && step > 0) {
@@ -94,13 +115,12 @@
             const endRange = startRange + step - 1;
             labelRange = `${startRange}-${endRange}`;
         } else {
-            labelRange = sNum;
+            labelRange = start + i;
         }
 
         let vcfBody = "";
         let aC = 1, nC = 1;
 
-        // Nama Kontak tetap pakai spasi sesuai permintaan
         const makeV = (r, n, idx, label) => `BEGIN:VCARD\nVERSION:3.0\nFN:${r}-${base} ${label} ${pad(idx)}\nTEL:${formatP(n)}\nEND:VCARD\n`;
 
         currentAdminList.forEach(n => vcfBody += makeV("ADMIN", n, aC++, labelRange));
@@ -109,7 +129,7 @@
         const blob = new Blob([vcfBody], { type: 'text/vcard' });
         const link = document.createElement('a');
         
-        const fileName = `ADMIN NAVY ${base} ${labelRange}.vcf`;
+        const fileName = `${fileTypePrefix} ${base} ${labelRange}.vcf`;
 
         await new Promise(resolve => setTimeout(() => {
           link.href = URL.createObjectURL(blob);
@@ -118,7 +138,7 @@
           resolve();
         }, 1200)); 
       }
-      alert("Selesai! File terpisah berdasarkan huruf X.");
+      alert("Selesai! Teks pengganggu berhasil dibersihkan dan tipe file disesuaikan.");
     });
   </script>
 </body>
